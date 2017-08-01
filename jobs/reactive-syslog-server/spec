@@ -1,0 +1,11 @@
+---
+name: reactive-syslog-server
+
+templates:
+  ctl.erb: bin/ctl
+
+packages:
+- java
+- reactive-syslog-server
+
+properties: {}

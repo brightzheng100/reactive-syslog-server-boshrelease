@@ -1,0 +1,31 @@
+#!/bin/sh
+
+JOB_NAME=reactive-syslog-server
+RUN_DIR=/var/vcap/sys/run/$JOB_NAME
+LOG_DIR=/var/vcap/sys/log/$JOB_NAME
+STORE_DIR=/var/vcap/store/$JOB_NAME
+PACKAGE_DIR=/var/vcap/packages/$JOB_NAME
+PIDFILE=${RUN_DIR}/pid
+JAVA_HOME=/var/vcap/packages/java
+PATH=$PATH:$JAVA_HOME/bin
+
+
+case $1 in
+  start)
+    mkdir -p ${STORE_DIR} ${LOG_DIR} ${RUN_DIR}
+    chown -R vcap:vcap ${STORE_DIR} ${LOG_DIR} ${RUN_DIR}
+
+    echo $$ > $PIDFILE
+    exec chpst -u vcap:vcap java -jar ${PACKAGE_DIR}/reactive-syslog-server.jar \
+                            >>$LOG_DIR/$JOB_NAME.stdout.log \
+                            2>>$LOG_DIR/$JOB_NAME.stderr.log
+    ;;
+
+  stop)
+    kill -9 `cat ${PIDFILE}`
+    rm -f $PIDFILE
+    ;;
+
+  *)
+    echo "Usage: ctl {start|stop}" ;;
+esac

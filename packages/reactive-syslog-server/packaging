@@ -1,0 +1,3 @@
+set -e
+
+cp -a reactive-syslog-server/*.jar $BOSH_INSTALL_TARGET/reactive-syslog-server.jar

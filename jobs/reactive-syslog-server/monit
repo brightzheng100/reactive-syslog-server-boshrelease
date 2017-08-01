@@ -1,0 +1,5 @@
+check process reactive-syslog-server
+ with pidfile /var/vcap/sys/run/reactive-syslog-server/pid
+ start program "/var/vcap/jobs/reactive-syslog-server/bin/ctl start"
+ stop program "/var/vcap/jobs/reactive-syslog-server/bin/ctl stop"
+ group vcap

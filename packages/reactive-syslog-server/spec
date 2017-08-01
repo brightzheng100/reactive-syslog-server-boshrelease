@@ -1,0 +1,7 @@
+---
+name: reactive-syslog-server
+
+dependencies: []
+
+files:
+- reactive-syslog-server/reactive-syslog-server-0.0.1-SNAPSHOT.jar
