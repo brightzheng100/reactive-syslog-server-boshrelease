@@ -8,4 +8,7 @@ packages:
 - java
 - reactive-syslog-server
 
-properties: {}
+properties:
+  syslog.port:
+    description: "Port on which syslog server is listening"
+    default: 10514
