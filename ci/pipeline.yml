@@ -37,7 +37,7 @@ resources:
   type: github-release
   source:
     user: making
-    repository: nexus-boshrelease
+    repository: reactive-syslog-server-boshrelease
     access_token: {{github-access-token}}
 jobs:
 - name: bosh-deploy
