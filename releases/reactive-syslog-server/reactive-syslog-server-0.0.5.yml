@@ -1,0 +1,20 @@
+name: reactive-syslog-server
+version: 0.0.5
+commit_hash: c1a8dbe
+uncommitted_changes: true
+jobs:
+- name: reactive-syslog-server
+  version: 3c16f83172c0a22a51d83dad5b5b81ebfba86133
+  fingerprint: 3c16f83172c0a22a51d83dad5b5b81ebfba86133
+  sha1: 90e673f2dedfcf3b65f2120a5310e9837f5be84e
+packages:
+- name: java
+  version: 28faeb905e8fc6ca919934013f10a6bb43f9d4bb
+  fingerprint: 28faeb905e8fc6ca919934013f10a6bb43f9d4bb
+  sha1: a0f4ff22cf4e8acd949abcecfd1ff032c2299da3
+  dependencies: []
+- name: reactive-syslog-server
+  version: 4dadff5fae17dd995fcc606ea73a4ac148419d44
+  fingerprint: 4dadff5fae17dd995fcc606ea73a4ac148419d44
+  sha1: ba6aa583ebb29cc04e10d6240362d3bcb80a658f
+  dependencies: []
