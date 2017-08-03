@@ -259,7 +259,7 @@ jobs:
     params:
       name: repo-version/number
       tag: repo-version/number
-      body: resources/note.md
+      body: releases/note.md
       globs:
       - releases/*.tgz
 
