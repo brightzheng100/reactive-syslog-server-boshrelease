@@ -243,13 +243,13 @@ jobs:
           cp -r ./* ../updated-repo
 
           cat <<EOF > ../releases/note.md
-          ``` yaml
+          \`\`\` yaml
           releases:
           - name: reactive-syslog-server
             version: ${VERSION}
             url: https://github.com/making/reactive-syslog-server-boshrelease/releases/download/${VERSION}/${TARBALL}
             sha1: ${SHA1}
-          ```
+          \`\`\`
           EOF
   - put: repo
     params:
@@ -263,6 +263,60 @@ jobs:
       globs:
       - releases/*.tgz
 
+- name: bosh-deploy-prod
+  plan:
+  - aggregate:
+    - get: repo
+      trigger: true
+      passed:
+      - ship-it
+  - task: prepare-manifest
+    params:
+      BOSH_ENVIRONMENT: {{bosh-environment}}
+      BOSH_CLIENT: {{bosh-client}}
+      BOSH_CLIENT_SECRET: {{bosh-client-secret}}
+      BOSH_CA_CERT: {{bosh-ca-cert}}
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: starkandwayne/concourse
+          tag: latest
+      inputs:
+      - name: repo
+      outputs:
+      - name: releases
+      run:
+        path: bash
+        dir: repo
+        args:
+        - -c
+        - |
+          set -e
+          VERSION=`ls -t .sha1 | sort -r | head -1`
+          SHA1=`cat .sha1/${VERSION}`
+          cat <<EOF > ../releases/latest.yml
+          - type: replace
+            path: /releases/name=reactive-syslog-server/version
+            value: ${VERSION}
+
+          - type: replace
+            path: /releases/name=reactive-syslog-server/url?
+            value: https://github.com/making/reactive-syslog-server-boshrelease/releases/download/${VERSION}/reactive-syslog-server-${VERSION}.tgz
+
+          - type: replace
+            path: /releases/name=reactive-syslog-server/sha1?
+            value: ${SHA1}
+          EOF
+  - put: director
+    params:
+      manifest: repo/reactive-syslog-server.yml
+      ops_files:
+      - releases/latest.yml
+      cleanup: true
+      vars:
+        internal_ip: {{internal-ip}}
 
 
 ########################################
