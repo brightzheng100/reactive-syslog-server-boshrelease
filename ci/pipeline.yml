@@ -33,7 +33,12 @@ resources:
     client: {{bosh-client}}
     client_secret: {{bosh-client-secret}}
     ca_cert: {{bosh-ca-cert}}
-
+- name: gh-release
+  type: github-release
+  source:
+    user: making
+    repository: nexus-boshrelease
+    access_token: {{github-access-token}}
 jobs:
 - name: bosh-deploy
   plan:
@@ -56,7 +61,7 @@ jobs:
       - name: jars
       caches:
       - path: source/m2
-      run:
+      run: &MVN-PACKAGE
         path: bash
         dir: source
         args:
@@ -109,7 +114,7 @@ jobs:
           fi
 
           bosh2 add-blob ../jars/reactive-syslog-server.jar reactive-syslog-server/reactive-syslog-server-0.0.1-SNAPSHOT.jar
-          bosh2 upload-blobs
+          # bosh2 upload-blobs
 
           bosh2 create-release --force --timestamp-version --tarball=../releases/reactive-syslog-server-boshrelease.tgz
   - task: bosh-upload-release
@@ -149,8 +154,27 @@ jobs:
   plan:
   - aggregate:
     - get: repo
+      passed:
+      - bosh-deploy
+    - get: source
     - get: repo-version
-  - task: show-version
+  - task: mvn-package
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: maven
+          tag: latest
+      inputs:
+      - name: source
+      outputs:
+      - name: jars
+      caches:
+      - path: source/m2
+      run:
+        <<: *MVN-PACKAGE
+  - task: create-release
     params:
       BOSH_ENVIRONMENT: {{bosh-environment}}
       BOSH_CLIENT: {{bosh-client}}
@@ -158,6 +182,9 @@ jobs:
       BOSH_CA_CERT: {{bosh-ca-cert}}
       ACCESS_KEY_ID: {{s3-access-key-id}}
       SECRET_ACCESS_KEY: {{s3-secret-access-key}}
+      JDK_VERSION: 1.8.0_141
+      GIT_EMAIL: {{git-email}}
+      GIT_NAME: {{git-name}}
     config:
       platform: linux
       image_resource:
@@ -168,8 +195,10 @@ jobs:
       inputs:
       - name: repo
       - name: repo-version
+      - name: jars
       outputs:
       - name: releases
+      - name: updated-repo
       caches:
       - path: repo/blobs
       - path: repo/.blobs
@@ -180,7 +209,9 @@ jobs:
         - -c
         - |
           set -e
-          
+
+          VERSION=`cat ../repo-version/number`
+
           cat <<EOF > config/private.yml
           blobstore:
             options:
@@ -188,13 +219,49 @@ jobs:
               secret_access_key: ${SECRET_ACCESS_KEY}
           EOF
 
-          VERSION=`cat ../repo-version/number`
-          bosh2 sync-blobs
+          if [ ! -f blobs/java/openjdk-${JDK_VERSION}.tar.gz ];then
+            echo "Download OpenJDK"
+            curl -L -J -O https://download.run.pivotal.io/openjdk-jdk/trusty/x86_64/openjdk-${JDK_VERSION}.tar.gz
+            bosh2 add-blob openjdk-${JDK_VERSION}.tar.gz java/openjdk-${JDK_VERSION}.tar.gz
+          fi
 
-          find .
 
-          bosh2 create-release --force --version=${VERSION} --final --tarball=../releases/reactive-syslog-server-${VERSION}.tgz
-          find ../releases
+          TARBALL=reactive-syslog-server-${VERSION}.tgz
+          bosh2 add-blob ../jars/reactive-syslog-server.jar reactive-syslog-server/reactive-syslog-server-0.0.1-SNAPSHOT.jar
+          bosh2 create-release --force --version=${VERSION} --final --tarball=../releases/${TARBALL}
+
+          SHA1=`sha1sum ../releases/${TARBALL}`
+          mkdir -p .sha1
+          echo ${SHA1} > .sha1/${VERSION}
+
+          git config --global user.email "${GIT_EMAIL}"
+          git config --global user.name "${GIT_NAME}"
+          git add -A
+          git commit -m "Release ${VERSION}"
+
+          shopt -s dotglob
+          cp -r ./* ../updated-repo
+
+          cat << EOF > ../releases/note.md
+          ``` yaml
+          releases:
+          - name: reactive-syslog-server
+            version: ${VERSION}
+            url: https://github.com/making/reactive-syslog-server-boshrelease/releases/download/${VERSION}/${TARBALL}
+            sha1: ${SHA1}
+          ```
+          EOF
+  - put: repo
+    params:
+      repository: updated-repo
+      tag: repo-version/number
+  - put: gh-release
+    params:
+      name: repo-version/number
+      tag: repo-version/number
+      body: resources/note.md
+      globs:
+      - releases/*.tgz
 
 
 
@@ -203,6 +270,10 @@ jobs:
 - name: bump-to-next-patch-version
   plan:
   - aggregate:
+    - get: repo
+      trigger: true
+      passed:
+      - ship-it
     - get: repo-version
       params:
         bump: patch
