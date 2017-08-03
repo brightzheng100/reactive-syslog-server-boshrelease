@@ -230,7 +230,7 @@ jobs:
           bosh2 add-blob ../jars/reactive-syslog-server.jar reactive-syslog-server/reactive-syslog-server-0.0.1-SNAPSHOT.jar
           bosh2 create-release --force --version=${VERSION} --final --tarball=../releases/${TARBALL}
 
-          SHA1=`sha1sum ../releases/${TARBALL}`
+          SHA1=`sha1sum ../releases/${TARBALL} | awk '{print $1}'`
           mkdir -p .sha1
           echo ${SHA1} > .sha1/${VERSION}
 
@@ -242,7 +242,7 @@ jobs:
           shopt -s dotglob
           cp -r ./* ../updated-repo
 
-          cat << EOF > ../releases/note.md
+          cat <<EOF > ../releases/note.md
           ``` yaml
           releases:
           - name: reactive-syslog-server
