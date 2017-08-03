@@ -1,0 +1,235 @@
+---
+resource_types:
+- name: bosh-deployment
+  type: docker-image
+  source:
+    repository: cloudfoundry/bosh-deployment-resource
+resources:
+- name: repo
+  type: git
+  source:
+    uri: git@github.com:making/reactive-syslog-server-boshrelease.git
+    branch: master
+    private_key: {{github-private-key}}
+- name: repo-version
+  type: semver
+  source:
+    uri: git@github.com:making/reactive-syslog-server-boshrelease.git
+    branch: version
+    private_key: {{github-private-key}}
+    file: version
+    driver: git
+- name: source
+  type: git
+  source:
+    uri: git@github.com:making/reactive-syslog-server.git
+    branch: master
+    private_key: {{github-private-key}}
+- name: director
+  type: bosh-deployment
+  source:
+    deployment: reactive-syslog-server
+    target: {{bosh-environment}}
+    client: {{bosh-client}}
+    client_secret: {{bosh-client-secret}}
+    ca_cert: {{bosh-ca-cert}}
+
+jobs:
+- name: bosh-deploy
+  plan:
+  - aggregate:
+    - get: repo
+      trigger: true
+    - get: source
+      trigger: true
+  - task: mvn-package
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: maven
+          tag: latest
+      inputs:
+      - name: source
+      outputs:
+      - name: jars
+      caches:
+      - path: source/m2
+      run:
+        path: bash
+        dir: source
+        args:
+        - -c
+        - |
+          set -e
+          rm -rf ~/.m2
+          ln -fs $(pwd)/m2 ~/.m2
+          mvn package -DskipTests=true
+          cp target/*.jar ../jars/reactive-syslog-server.jar
+  - task: bosh-create-release
+    params:
+      JDK_VERSION: 1.8.0_141
+      ACCESS_KEY_ID: {{s3-access-key-id}}
+      SECRET_ACCESS_KEY: {{s3-secret-access-key}}
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: starkandwayne/concourse
+          tag: latest
+      inputs:
+      - name: repo
+      - name: jars
+      outputs:
+      - name: releases
+      caches:
+      - path: repo/blobs
+      - path: repo/.blobs
+      run: &BOSH-CREATE-RELEASE
+        path: bash
+        dir: repo
+        args:
+        - -c
+        - |
+          set -e
+
+          cat <<EOF > config/private.yml
+          blobstore:
+            options:
+              access_key_id: ${ACCESS_KEY_ID}
+              secret_access_key: ${SECRET_ACCESS_KEY}
+          EOF
+
+          if [ ! -f blobs/java/openjdk-${JDK_VERSION}.tar.gz ];then
+            echo "Download OpenJDK"
+            curl -L -J -O https://download.run.pivotal.io/openjdk-jdk/trusty/x86_64/openjdk-${JDK_VERSION}.tar.gz
+            bosh2 add-blob openjdk-${JDK_VERSION}.tar.gz java/openjdk-${JDK_VERSION}.tar.gz
+          fi
+
+          bosh2 add-blob ../jars/reactive-syslog-server.jar reactive-syslog-server/reactive-syslog-server-0.0.1-SNAPSHOT.jar
+          bosh2 upload-blobs
+
+          bosh2 create-release --force --timestamp-version --tarball=../releases/reactive-syslog-server-boshrelease.tgz
+  - task: bosh-upload-release
+    params:
+      BOSH_ENVIRONMENT: {{bosh-environment}}
+      BOSH_CLIENT: {{bosh-client}}
+      BOSH_CLIENT_SECRET: {{bosh-client-secret}}
+      BOSH_CA_CERT: {{bosh-ca-cert}}
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: starkandwayne/concourse
+          tag: latest
+      inputs:
+      - name: repo
+      - name: releases
+      run:
+        path: bash
+        args:
+        - -c
+        - |
+          set -e
+          bosh2 upload-release releases/*.tgz
+          bosh2 releases
+  - put: director
+    params:
+      manifest: repo/reactive-syslog-server.yml
+      releases:
+      - releases/*.tgz
+      cleanup: true
+      vars:
+        internal_ip: {{internal-ip}}
+
+- name: ship-it
+  plan:
+  - aggregate:
+    - get: repo
+    - get: repo-version
+  - task: show-version
+    params:
+      BOSH_ENVIRONMENT: {{bosh-environment}}
+      BOSH_CLIENT: {{bosh-client}}
+      BOSH_CLIENT_SECRET: {{bosh-client-secret}}
+      BOSH_CA_CERT: {{bosh-ca-cert}}
+      ACCESS_KEY_ID: {{s3-access-key-id}}
+      SECRET_ACCESS_KEY: {{s3-secret-access-key}}
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: starkandwayne/concourse
+          tag: latest
+      inputs:
+      - name: repo
+      - name: repo-version
+      outputs:
+      - name: releases
+      caches:
+      - path: repo/blobs
+      - path: repo/.blobs
+      run:
+        path: bash
+        dir: repo
+        args:
+        - -c
+        - |
+          set -e
+          
+          cat <<EOF > config/private.yml
+          blobstore:
+            options:
+              access_key_id: ${ACCESS_KEY_ID}
+              secret_access_key: ${SECRET_ACCESS_KEY}
+          EOF
+
+          VERSION=`cat ../repo-version/number`
+          bosh2 sync-blobs
+
+          find .
+
+          bosh2 create-release --force --version=${VERSION} --final --tarball=../releases/reactive-syslog-server-${VERSION}.tgz
+          find ../releases
+
+
+
+########################################
+
+- name: bump-to-next-patch-version
+  plan:
+  - aggregate:
+    - get: repo-version
+      params:
+        bump: patch
+  - put: repo-version
+    params:
+      file: repo-version/number
+
+- name: bump-to-next-minor-version
+  plan:
+  - aggregate:
+    - get: repo-version
+      params:
+        bump: minor
+  - put: repo-version
+    params:
+      file: repo-version/number
+
+- name: bump-to-next-majar-version
+  plan:
+  - aggregate:
+    - get: repo-version
+      params:
+        bump: majar
+  - put: repo-version
+    params:
+      file: repo-version/number
+
+
+
+
