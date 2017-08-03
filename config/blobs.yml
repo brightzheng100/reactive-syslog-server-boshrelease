@@ -2,5 +2,5 @@ java/openjdk-1.8.0_141.tar.gz:
   size: 78460327
   sha: bec09ecc5092b6211f1a40367ff021d6de65279c
 reactive-syslog-server/reactive-syslog-server-0.0.1-SNAPSHOT.jar:
-  size: 11456756
-  sha: 1c4b485f39d82a3a0302be15bd654a76d56c4702
+  size: 11456859
+  sha: 5b0b35f6262b9a66881a2ac47098db92c48625be
